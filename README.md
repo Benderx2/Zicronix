@@ -11,6 +11,12 @@ Zicronix is a 32-bit Operating System written in FASM
   + Advanced Shell <br>
   + Supports SSE, FPU and VMX <br>
   + Own RamFS <br>
+  + PC Speaker <br>
+  + Serial I/O
+  + ATA Driver (IDE)
+  + Basic ACPI Support <br>
+  + VGA Console
+  + Debugging Support (ALT Key)
 <h1> Upcoming Features </h1>
 + Pre-emptive Multitasking (Have a look at kernel/threads, some work has been already done) <br>
 + Proper File I/O (Have a look at kernel/file) <br>
