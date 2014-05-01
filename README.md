@@ -12,7 +12,7 @@ Zicronix is a 32-bit Operating System written in FASM
   +Supports SSE, FPU and VMX <br>
   +Own RamFS <br>
 <h1> Upcoming Features </h1>
-+Pre-emptive Multitasking (Have a look at kernel/threads, some work has been already done) <br>
+..Pre-emptive Multitasking (Have a look at kernel/threads, some work has been already done) <br>
 +Proper File I/O (Have a look at kernel/file) <br>
 +Real Mode Emulator <br>
 +Virtual Memory <br>
