@@ -365,22 +365,6 @@ init_done:
 	mov edi, RAMDISK_LOAD_POINT
 	call loadfile32
 	jc .fatal
-	mov eax, VGA_DRV_FILE_NAME
-	call file_convert
-	;; load vga driver
-	mov esi, eax
-	mov edi, VGA_DRIVER_LOAD_POINT
-	call loadfile32
-	mov edi, VGA_DRIVER_LOAD_POINT
-	cmp dword [edi], 'ZDRV'
-	jne .fatal
-	call CODE_SEL:VGA_DRIVER_LOAD_POINT+8
-	mov esi, KERNEL_PHYSICAL_REMAP
-	mov eax, _KERNEL_FILE_NAME
-	call file_convert
-	mov edi, eax
-	mov ecx, 500
-	call writefile32
 	; Cool. RAMDISK Loaded :)
 	mov esi, _MOUNTING_USR
 	call printf32
