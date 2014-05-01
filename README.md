@@ -27,9 +27,9 @@ Zicronix is a 32-bit Operating System written in FASM
 I am writing this OS for my learning, I won't usually accept any contributions from anyone except some minor bugfixes, if you are doing a bigger change in the kernel (adding new stuff) please do contact me before pushing. <br>
 <h2> Documentation </h2>
 All the possible documentation is the the doc/ directory. It's not complete though.
-<h1> Some Crap(Screen)shots. </h2>
+<h2> Some Crap(Screen)shots. </h2>
 ![alt tag](http://i.imgur.com/qQQ8Hk2.png)
 ![alt tag](http://i.imgur.com/riTN9KJ.jpg)
 ![alt tag](http://i.imgur.com/xnfscbS.png)
 ![alt tag](http://i.imgur.com/9Lh9Xq5.png)
-If I've missed anything, or have not given proper credit, please contact me at excectra@gmail.com. I apologize for any inconvenience.
+If I've missed anything, or have not given proper credit, please contact me at excectra@no-spam-gmail.com. I apologize for any inconvenience. Remove 'no-spam-' to get the actual email address.
