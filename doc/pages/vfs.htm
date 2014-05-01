@@ -1,0 +1,24 @@
+<html>
+<h3 align="center">Part of a series on: The Zicronix Kernel</h3>
+<h1  align="center"><img src="../img/logo.bmp" alt="Logo" height="168" width="168"> </h1>
+<font color="black">
+<!-- Include Fonts !-->
+<head>
+<link rel="stylesheet" type="text/css" href='http://fonts.googleapis.com/css?family=Ubuntu+Mono'></link>
+<style>
+		body {
+        font-family: 'Ubuntu Mono', serif;
+        font-size: 18px;
+      }
+</style>  
+</head>
+<h1 align="center">Zicronix Virtual File System</h1>
+<h6 align="center">Note: Zicronix's VFS is still under development, so the factual accuracy of this document is disputed.</h6>
+<h1 align="center"><img src="../img/vfs.png"></h1>
+The Virtual File System in Zicronix is pretty simple, the application makes a request through applib which issues an interrupt and tells <br>
+the kernel about a request, the kernel handles the request by grouping it into: <br>
+1. Is it a R/W operation to a device?<br>
+2. Or is it a typical function call? <br>
+For case(2) the kernel will simply call the appropriate handler and exit, for case(1) the kernel will make a request to the HAL through<br>
+the VFS, the HAL will find the appropriate device driver, and will issue a request to the driver, the driver will have all rights<br>
+to access the device it's give and will write/read to the device.<br>

@@ -1,0 +1,583 @@
+<html>
+<h3 align="center">Part of a series on: The Zicronix Kernel</h3>
+<h1  align="center"><img src="../img/logo.bmp" alt="Logo" height="168" width="168"> </h1>
+<font color="black">
+<!-- Include Fonts !-->
+<head>
+<link rel="stylesheet" type="text/css" href='http://fonts.googleapis.com/css?family=Ubuntu+Mono'></link>
+<style>
+		body {
+        font-family: 'Ubuntu Mono', serif;
+        font-size: 18px;
+      }
+</style>  
+</head>
+<h1 align="center">Zicronix System Call List</h1>
+This page will explain the various system calls provided by the Zicronix Kernel API, which is exposed to the applications through the<br>
+libasm (applib.s). <br>
+<h2>Zicronix Executable File Format (*.znx) </h2>
+A simple Zicronix executable can be simply a flat binary with a 'ZNUX' header, <br>
+however a <b>valid</b> Zicronix Executables works like this:<br>
+<pre name="code" class="cpp">
+	VIRTUAL_ADDRESS = 0x800000 (Must be added to all internal label references, most modern assemblers support this through the ORG directive)
+	ZICRONIX_HEADER (ZNUX) = 4 bytes
+	JUMP TO "__start", (The start function will save the arguments and the application stack) = 3 bytes
+	POINTER_TO_START (Pointer to the start function) = 4 bytes
+	POINTER_TO_END_OF_TEXT_SECTION (Pointer to the end of text section) = 4 bytes
+	SIZE_OF_TEXT_SECTION (Size of text section) = 4 bytes
+	POINTER_TO_Z_MAIN (Pointer to Zicronix Main, the entry point of the actual code) = 4 bytes
+	AUTHOR_NAME (Name of Author) = 11 bytes
+	KERNEL_VER (32/64 bit) = 1 byte --Not needed for now--
+</pre>
+<link type="text/css" rel="stylesheet" href="../css/SyntaxHighlighter.css"></link>
+<script language="javascript" src="../js/shCore.js"></script>
+<script language="javascript" src="../js/shBrushCpp.js"></script>
+<script language="javascript" src="../js/shBrushXml.js"></script>
+<script language="javascript">
+dp.SyntaxHighlighter.ClipboardSwf = '/flash/clipboard.swf';
+dp.SyntaxHighlighter.HighlightAll('code');
+</script>
+Assembly code:
+<pre style='color:#000000;background:#ffffff;'><html><body style='color:#000000; background:#ffffff; '><pre>
+__org <span style='color:#004a43; '>equ</span> <span style='color:#008000; '>0x800000</span>
+ZNU_HDR <span style='color:#004a43; '>equ</span> <span style='color:#0000e6; '>'ZNUX'</span>
+<span style='color:#696969; '>;; zicronix file format.</span>
+<span style='color:#004a43; '>org</span> __org
+<span style='color:#e34adc; '>__FILE___START:</span>
+<span style='color:#696969; '>;; header (4-bytes)</span>
+<span style='color:#004a43; '>db</span> <span style='color:#0000e6; '>'ZNUX'</span>
+<span style='color:#696969; '>;; jump to start</span>
+<span style='color:#800000; font-weight:bold; '>jmp</span> <span style='color:#e34adc; '>__start</span>
+<span style='color:#696969; '>;; start point (4-bytes)</span>
+<span style='color:#004a43; '>dd</span> __start 
+<span style='color:#696969; '>;; end point (4-bytes)</span>
+<span style='color:#004a43; '>dd</span> __end 
+<span style='color:#696969; '>;; size of .text section</span>
+<span style='color:#e34adc; '>____APPLICATION_SIZE:</span> <span style='color:#004a43; '>dd</span> __end <span style='color:#808030; '>-</span> __FILE___START 
+<span style='color:#696969; '>;; entry point (4-bytes)</span>
+<span style='color:#004a43; '>dd</span> _z_main
+<span style='color:#696969; '>;; file creator name (11-bytes) </span>
+<span style='color:#e34adc; '>____AUTHOR_NAME:</span> <span style='color:#004a43; '>db</span> <span style='color:#0000e6; '>'EXAMPLENAME'</span>
+<span style='color:#696969; '>;; kernel version (32-bit or 64-bit) (1 - byte)</span>
+<span style='color:#e34adc; '>____KERNEL_VER:</span> <span style='color:#004a43; '>db</span> <span style='color:#008c00; '>32</span></body>
+</pre>
+</pre>
+<h2>Zicronix Memory Map</h2>
+<pre name="MMAP" class="cpp">
+		0x00000 - 0x003FF - Reserved (BIOS IDT, Not used by Zicronix after entering into Protected Mode)
+		0x003FF - 0x00500 - Possible BIOS Area ???
+		0x00500 - 0x7C000 - Kernel Data Area
+		0x7C000 - 0x7E000 - Zicronix Boot Sector (Free for use after boot)
+		0x7E000 - 0x90000 - Used by Kernel (Reserved).
+		0x90000 - 0x100000 - EBDA?? BIOS Area?
+		0x100000 - 0x400000 - Reserved by Kernel.
+		0x400000 - 0x700000 - Memory Cleared by Kernel at boot (free for use by applications)
+		0x700000 - 0x700200 - Kernel FAT Buffer (Shouldn't be used at all)
+		0x900000 - 0xA00000 - Cleared by kernel, applications are supposed to exist in this range.
+		0xA00000 - ???????? - Can be used by applications, however not cleared nor assured to exist.
+		
+</pre>
+<link type="text/css" rel="stylesheet" href="../css/SyntaxHighlighter.css"></link>
+<script language="javascript" src="../js/shCore.js"></script>
+<script language="javascript" src="../js/shBrushCpp.js"></script>
+<script language="javascript" src="../js/shBrushXml.js"></script>
+<script language="javascript">
+dp.SyntaxHighlighter.ClipboardSwf = '/flash/clipboard.swf';
+dp.SyntaxHighlighter.HighlightAll('MMAP');
+</script>
+<h2>Zicronix Example Application</h2>
+First make sure you've downloaded <a href="http://flatassembler.net/">FASM</a> which is an assembler, we'll use this as our assembler,<br>
+with some quick modifications in applib you can also choose <a href="http://nasm.us/">NASM</a> as your assembler.<br>
+Now copy the directory "ZNU" (from source/userspace) to your preferred folder, and create a directory called helloapp<br>
+Under helloapp make a new file called hello.asm, this file will be your application source code<br>
+Example Application (Write this to hello.asm):<br>
+<pre style='color:#000000;background:#ffffff;'><html><body style='color:#000000; background:#ffffff; '><pre>
+<span style='color:#004a43; '>include</span> <span style='color:#0000e6; '>'..\znu\libasm\applib.s'</span>
+<span style='color:#696969; '>;; Our start symbol</span>
+<span style='color:#e34adc; '>__start:</span>
+     <span style='color:#696969; '>;; Set ESI register to point to string</span>
+     <span style='color:#800000; font-weight:bold; '>mov</span> <span style='color:#000080; '>esi</span><span style='color:#808030; '>,</span> hello_string
+     <span style='color:#696969; '>;; Print out ESI</span>
+     <span style='color:#800000; font-weight:bold; '>call</span> <span style='color:#e34adc; '>os_print_string</span>
+     <span style='color:#696969; '>;; Wait for keypress</span>
+     <span style='color:#800000; font-weight:bold; '>call</span> <span style='color:#e34adc; '>os_wait_for_key</span>
+     <span style='color:#696969; '>;; Exit to the OS</span>
+     <span style='color:#800000; font-weight:bold; '>call</span> <span style='color:#e34adc; '>os_exit</span>
+<span style='color:#696969; '>;; Our String</span>
+<span style='color:#e34adc; '>hello_string:</span> <span style='color:#004a43; '>db</span> <span style='color:#0000e6; '>'Hello, World.'</span><span style='color:#808030; '>,</span> NEWLINE<span style='color:#808030; '>,</span> <span style='color:#0000e6; '>'Press a key to exit'</span><span style='color:#808030; '>,</span> NULL
+</pre>
+</pre>
+Now open up a terminal, cd to the helloapp directory, (assuming that FASM is installed in your $bin or PATH) do this:
+<pre>
+	fasm hello.asm
+</pre>
+You should see a file called hello.znx in the helloapp directory, copy this to $DISK_IMAGE/usr/bin.<br>
+Under Zicronix, cd to the bin directory and type:
+<pre>
+	./hello.znx
+</pre>
+You should see:
+<pre>
+	Hello, World.
+	Press a key to exit.
+</pre>
+
+<h2>Zicronix System/Library Calls</h2>
+Zicronix system calls were inspired from another OS's system calls known as <a href="http://mikeos.berlios.de">MikeOS</a> which is an educational operating system by <br>
+Mike Saunders, known for simplicity, and helps beginner's to get a hand at basic assembly.<br>
+Note the fact that such abstraction is provided by applib, which makes the system calls look cleaner, Zicronix has 3 types of API:<br>
+1. System API (Vector=0x30)<br>
+2. Extended API (Vector=0x50)<br>
+3. FAT File System API (Vector=0x31)<br>
+4. VGA API (Vector=0x33)<br>
+This design was chosen in haste, so applib will make your life a hell lot easier. :)<br>
+<h3>Screen Output</h3>
+This section will explain all calls related to screen output.
+<!--!-->
+<h4><font color="red">os_print_string</font></h4>
+Prints a string. <br>
+IN: String in ESI (Null terminated) <br>
+Example:
+<pre style='color:#000000;background:#ffffff;'><html><body style='color:#000000; background:#ffffff; '><pre>
+<span style='color:#800000; font-weight:bold; '>mov</span> <span style='color:#000080; '>esi</span><span style='color:#808030; '>,</span> string
+<span style='color:#800000; font-weight:bold; '>call</span> <span style='color:#e34adc; '>os_print_string</span>
+...
+string <span style='color:#004a43; '>db</span> <span style='color:#0000e6; '>'String, Hello!'</span><span style='color:#808030; '>,</span> NULL
+</pre>
+</pre>
+<!--!--->
+<h4><font color="red">os_print_char</font></h4>
+Prints a character. <br>
+IN: AL = Character <br>
+Example:
+<pre style='color:#000000;background:#ffffff;'><html><body style='color:#000000; background:#ffffff; '><pre>
+<span style='color:#800000; font-weight:bold; '>mov</span> <span style='color:#000080; '>al</span><span style='color:#808030; '>,</span> <span style='color:#0000e6; '>'C'</span>
+<span style='color:#800000; font-weight:bold; '>call</span> <span style='color:#e34adc; '>os_print_char</span>
+</pre>
+</pre>
+<!--!-->
+<h4><font color="red">os_get_cursor_pos</font></h4>
+Get the position of the cursor. <br>
+IN: Nothing <br>
+OUT: DL = X, DH = Y <br>
+Example:
+<pre style='color:#000000;background:#ffffff;'><html><body style='color:#000000; background:#ffffff; '><pre>
+<span style='color:#800000; font-weight:bold; '>call</span> <span style='color:#e34adc; '>os_get_cursor_pos</span>
+<span style='color:#696969; '>;; DL = X position, DH = Y position</span>
+<span style='color:#800000; font-weight:bold; '>mov</span> <span style='color:#800000; font-weight:bold; '>byte</span> <span style='color:#808030; '>[</span>cur_X<span style='color:#808030; '>]</span><span style='color:#808030; '>,</span> <span style='color:#000080; '>dl</span>
+<span style='color:#800000; font-weight:bold; '>mov</span> <span style='color:#800000; font-weight:bold; '>byte</span> <span style='color:#808030; '>[</span>cur_Y<span style='color:#808030; '>]</span><span style='color:#808030; '>,</span> <span style='color:#000080; '>dh</span>
+...
+cur_X <span style='color:#004a43; '>db</span> <span style='color:#008000; '>0x00</span>
+cur_Y <span style='color:#004a43; '>db</span> <span style='color:#008000; '>0x00</span>
+</pre>
+</pre>
+<!--!-->
+<h4><font color="red">os_set_cursor_pos</font></h4>
+Sets the cursor position. <br>
+IN: DL = X position, DH = Y position <br>
+OUT: Cursor set. <br>
+Example:
+<pre style='color:#000000;background:#ffffff;'><html><body style='color:#000000; background:#ffffff; '><pre>
+<span style='color:#696969; '>;; Set the cursor position to 70, 25</span>
+<span style='color:#800000; font-weight:bold; '>mov</span> <span style='color:#000080; '>dl</span><span style='color:#808030; '>,</span> <span style='color:#008c00; '>70</span> <span style='color:#696969; '>;; X</span>
+<span style='color:#800000; font-weight:bold; '>mov</span> <span style='color:#000080; '>dh</span><span style='color:#808030; '>,</span> <span style='color:#008c00; '>25</span> <span style='color:#696969; '>;; Y</span>
+<span style='color:#800000; font-weight:bold; '>call</span> <span style='color:#e34adc; '>os_set_cursor_pos</span>
+...
+</pre>
+</pre>
+<!--!-->
+<h4><font color="red">os_clear_screen</font></h4>
+Clears screen in text mode <br>
+IN: NOTHING <br>
+OUT: Screen cleared cursor positions set to 0,0 .<br>
+Example:
+<pre style='color:#000000;background:#ffffff;'><html><body style='color:#000000; background:#ffffff; '><pre>
+<span style='color:#800000; font-weight:bold; '>call</span> <span style='color:#e34adc; '>os_clear_screen</span>
+<span style='color:#696969; '>;; screen is cleared now.</span>
+...
+</pre>
+</pre>
+<!--
+!-->
+<h3> Filesystem Access </h3>
+This section will explain the calls related to file system access. By default Zicronix until now uses FAT16 along with it's own implementation of ZRAM (Zicronix Ramdisk)<br>
+file system. <br>
+<!--
+!-->
+<h4><font color="red">os_load_file</font></h4>
+Load a file into memory<br>
+IN: ESI - File name, EDI - Memory Buffer<br>
+OUT: Nothing<br>
+NOTES: ONLY THE CURRENT DIRECTORY IS SEARCHED! PLEASE CALL "CHDIR" TO SWITCH TO YOUR NEW DIRECTORY!<br>
+Example:
+<pre style='color:#000000;background:#ffffff;'><html><body style='color:#000000; background:#ffffff; '><pre>
+<span style='color:#800000; font-weight:bold; '>mov</span> <span style='color:#000080; '>esi</span><span style='color:#808030; '>,</span> filename
+<span style='color:#800000; font-weight:bold; '>mov</span> <span style='color:#000080; '>edi</span><span style='color:#808030; '>,</span> buffer
+<span style='color:#800000; font-weight:bold; '>call</span> <span style='color:#e34adc; '>os_load_file</span>
+...
+<span style='color:#e34adc; '>filename:</span> <span style='color:#004a43; '>db</span> <span style='color:#0000e6; '>'FILE.TXT'</span>
+<span style='color:#e34adc; '>buffer:</span> <span style='color:#004a43; '>times</span> <span style='color:#008c00; '>400</span> <span style='color:#004a43; '>db</span> <span style='color:#008c00; '>0</span>
+</pre>
+</pre>
+<!--
+!-->
+<h4><font color="red">os_write_file</font></h4>
+Write to a file from memory<br>
+IN: ESI - File name, EDI - Memory Buffer, ECX - Number of bytes to write<br>
+OUT: Nothing<br>
+NOTES: ONLY THE CURRENT DIRECTORY IS USED! PLEASE CALL "CHDIR" TO SWITCH TO YOUR NEW DIRECTORY! IF THE FILE ALREADY EXISTS IT'S OVERWRITTEN!<br>
+Example:
+<pre style='color:#000000;background:#ffffff;'><html><body style='color:#000000; background:#ffffff; '><pre>
+<span style='color:#800000; font-weight:bold; '>mov</span> <span style='color:#000080; '>esi</span><span style='color:#808030; '>,</span> filename
+<span style='color:#800000; font-weight:bold; '>mov</span> <span style='color:#000080; '>edi</span><span style='color:#808030; '>,</span> buffer
+<span style='color:#800000; font-weight:bold; '>mov</span> <span style='color:#000080; '>ecx</span><span style='color:#808030; '>,</span> <span style='color:#008c00; '>16</span>
+<span style='color:#800000; font-weight:bold; '>call</span> <span style='color:#e34adc; '>os_write_file</span>
+<span style='color:#696969; '>;; now file.txt contains buffer</span>
+...
+<span style='color:#e34adc; '>filename:</span> <span style='color:#004a43; '>db</span> <span style='color:#0000e6; '>'FILE.TXT'</span>
+<span style='color:#e34adc; '>buffer:</span> <span style='color:#004a43; '>db</span> <span style='color:#0000e6; '>'this is file.txt'</span><span style='color:#808030; '>,</span> NULL
+</pre>
+</pre>
+<!--
+!-->
+<h4><font color="red">os_create_file</font></h4>
+Create a new file.<br>
+IN: ESI - File name, ECX - File Size<br>
+OUT: Nothing<br>
+NOTES: ONLY THE CURRENT DIRECTORY IS USED! PLEASE CALL "CHDIR" TO SWITCH TO YOUR NEW DIRECTORY! IF THE FILE ALREADY EXISTS IT'S OVERWRITTEN!<br>
+Example:
+<pre style='color:#000000;background:#ffffff;'><html><body style='color:#000000; background:#ffffff; '><pre>
+<span style='color:#800000; font-weight:bold; '>mov</span> <span style='color:#000080; '>esi</span><span style='color:#808030; '>,</span> dirname
+<span style='color:#800000; font-weight:bold; '>call</span> <span style='color:#e34adc; '>os_create_file</span>
+<span style='color:#696969; '>;; now file.txt is created</span>
+...
+<span style='color:#e34adc; '>filename:</span> <span style='color:#004a43; '>db</span> <span style='color:#0000e6; '>'FILE.TXT'</span>
+</pre>
+</pre>
+<!--
+!-->
+<h4><font color="red">os_rm_file</font></h4>
+Deletes a file from the current directory<br>
+IN: ESI - File name<br>
+OUT: Nothing (CF set on error)<br>
+NOTES: ONLY THE CURRENT DIRECTORY IS USED! PLEASE CALL "CHDIR" TO SWITCH TO YOUR NEW DIRECTORY!<br>
+Example:
+<pre style='color:#000000;background:#ffffff;'><html><body style='color:#000000; background:#ffffff; '><pre>
+<span style='color:#800000; font-weight:bold; '>mov</span> <span style='color:#000080; '>esi</span><span style='color:#808030; '>,</span> filename
+<span style='color:#800000; font-weight:bold; '>call</span> <span style='color:#e34adc; '>os_rm_file</span>
+<span style='color:#696969; '>;; now file.txt is deleted</span>
+...
+<span style='color:#e34adc; '>filename:</span> <span style='color:#004a43; '>db</span> <span style='color:#0000e6; '>'FILE.TXT'</span>
+</pre>
+</pre>
+<!--
+!-->
+<h4><font color="red">os_change_directory</font></h4>
+Switches to a directory<br>
+IN: ESI - Directory Name<br>
+OUT: Nothing (CF set on error)<br>
+NOTES: ONLY THE CURRENT DIRECTORY IS SEARCHED! PLEASE CALL "CHDIR" TO SWITCH TO YOUR NEW DIRECTORY!<br>
+TO SWITCH TO THE PREVIOUS DIRECTORY SET ESI TO "PARENTDIR" (DEFINED BY APPLIB). <br>
+Example:
+<pre style='color:#000000;background:#ffffff;'><html><body style='color:#000000; background:#ffffff; '><pre>
+<span style='color:#800000; font-weight:bold; '>mov</span> <span style='color:#000080; '>esi</span><span style='color:#808030; '>,</span> dirname
+<span style='color:#800000; font-weight:bold; '>call</span> <span style='color:#e34adc; '>os_change_directory</span>
+<span style='color:#696969; '>;; now current directory is changed to src</span>
+...
+<span style='color:#e34adc; '>filename:</span> <span style='color:#004a43; '>db</span> <span style='color:#0000e6; '>'SRC'</span>
+</pre>
+</pre>
+<!--
+!-->
+<h4><font color="red">os_create_dir</font></h4>
+Create a new directory.<br>
+IN: ESI - Directory name<br>
+OUT: Nothing<br>
+NOTES: ONLY THE CURRENT DIRECTORY IS USED! PLEASE CALL "CHDIR" TO SWITCH TO YOUR NEW DIRECTORY!<br>
+Example:
+<pre style='color:#000000;background:#ffffff;'><html><body style='color:#000000; background:#ffffff; '><pre>
+<span style='color:#800000; font-weight:bold; '>mov</span> <span style='color:#000080; '>esi</span><span style='color:#808030; '>,</span> dirname
+<span style='color:#800000; font-weight:bold; '>call</span> <span style='color:#e34adc; '>os_create_dir</span>
+<span style='color:#696969; '>;; now SRC is created</span>
+...
+<span style='color:#e34adc; '>dirname:</span> <span style='color:#004a43; '>db</span> <span style='color:#0000e6; '>'SRC'</span>
+</pre>
+</pre>
+<h4><font color="red">os_rm_dir</font></h4>
+Deletes a directory from the current directory<br>
+IN: ESI - Directory name<br>
+OUT: Nothing (CF set on error)<br>
+NOTES: ONLY THE CURRENT DIRECTORY IS USED! PLEASE CALL "CHDIR" TO SWITCH TO YOUR NEW DIRECTORY!<br>
+Example:
+<pre style='color:#000000;background:#ffffff;'><html><body style='color:#000000; background:#ffffff; '><pre>
+<span style='color:#800000; font-weight:bold; '>mov</span> <span style='color:#000080; '>esi</span><span style='color:#808030; '>,</span> dirname
+<span style='color:#800000; font-weight:bold; '>call</span> <span style='color:#e34adc; '>os_rm_dir</span>
+<span style='color:#696969; '>;; now SRC is deleted</span>
+...
+<span style='color:#e34adc; '>dirname:</span> <span style='color:#004a43; '>db</span> <span style='color:#0000e6; '>'SRC'</span>
+</pre>
+</pre>
+<h4><font color="red">os_get_file_list</font></h4>
+Gets the file list of current directory.<br>
+IN: EDI - Pointer to buffer<br>
+OUT: Null terminated list of files in buffer, each entry is separated by NEWLINE (0xA)<br>
+Example:
+<pre style='color:#000000;background:#ffffff;'><html><body style='color:#000000; background:#ffffff; '><pre>
+<span style='color:#800000; font-weight:bold; '>mov</span> <span style='color:#000080; '>edi</span><span style='color:#808030; '>,</span> buffer
+<span style='color:#800000; font-weight:bold; '>call</span> <span style='color:#e34adc; '>os_get_file_list</span>
+<span style='color:#696969; '>;; now buffer contains the file list</span>
+...
+<span style='color:#e34adc; '>buffer:</span>
+</pre>
+</pre>
+<h4><font color="red">os_file_exists</font></h4>
+Query existence of a file.<br>
+IN: ESI File Name<br>
+OUT: AX set to starting cluster if found, if not EAX = -1 <br>
+Example:
+<pre style='color:#000000;background:#ffffff;'><html><body style='color:#000000; background:#ffffff; '><pre>
+<span style='color:#800000; font-weight:bold; '>mov</span> <span style='color:#000080; '>esi</span><span style='color:#808030; '>,</span> filename
+<span style='color:#800000; font-weight:bold; '>call</span> <span style='color:#e34adc; '>os_file_exists</span>
+<span style='color:#696969; '>;; if file.txt exists ax = starting cluster if no eax = -1</span>
+...
+filename <span style='color:#004a43; '>db</span> <span style='color:#0000e6; '>'FILE.TXT'</span>
+</pre>
+</pre>
+<!--!-->
+<h3>Keyboard I/O</h3>
+This section describes calls related to Keyboard I/O.
+<h4><font color="red">os_wait_for_key</font></h4>
+Waits for a keypress.<br>
+IN: Nothing<br>
+OUT: AL = ASCII Character, AH = Scan Code<br>
+Example:
+<pre style='color:#000000;background:#ffffff;'><html><body style='color:#000000; background:#ffffff; '><pre>
+<span style='color:#800000; font-weight:bold; '>xor</span> <span style='color:#000080; '>eax</span><span style='color:#808030; '>,</span> <span style='color:#000080; '>eax</span>
+<span style='color:#800000; font-weight:bold; '>call</span> <span style='color:#e34adc; '>os_wait_for_key</span>
+<span style='color:#696969; '>;; AL = ASCII Char, AH = Scan Code</span>
+</pre>
+</pre>
+<!--!-->
+<h4><font color="red">os_input_string</font></h4>
+Grabs a string from user (BUGGGGGGYYYYY).<br>
+IN: EDI - Buffer to store string<br>
+OUT: Nothing, Buffer filled, Returns after press [ENTER]<br>
+Example:
+<pre style='color:#000000;background:#ffffff;'><html><body style='color:#000000; background:#ffffff; '><pre>
+<span style='color:#800000; font-weight:bold; '>mov</span> <span style='color:#000080; '>edi</span><span style='color:#808030; '>,</span> buffer
+<span style='color:#800000; font-weight:bold; '>call</span> <span style='color:#e34adc; '>os_input_string</span>
+<span style='color:#696969; '>;; recommended size for buffer is 256 bytes</span>
+<span style='color:#e34adc; '>buffer:</span> <span style='color:#004a43; '>times</span> <span style='color:#008c00; '>256</span> <span style='color:#004a43; '>db</span> <span style='color:#008000; '>0x00</span>
+</pre>
+</pre>
+<!--!-->
+<h3>String Functions</h3>
+This section will describe calls related to string manipulation.<br>
+NOTE: These functions are NOT provided by the kernel but by the application library.<br>
+<h4><font color="red">os_int_to_string</font></h4>
+Converts an Integer to String.<br>
+IN: EAX - Integer<br>
+OUT: EAX - String<br>
+Example:
+<pre style='color:#000000;background:#ffffff;'><html><body style='color:#000000; background:#ffffff; '><pre>
+<span style='color:#800000; font-weight:bold; '>mov</span> <span style='color:#000080; '>eax</span><span style='color:#808030; '>,</span> <span style='color:#008c00; '>12312d</span>
+<span style='color:#800000; font-weight:bold; '>call</span> <span style='color:#e34adc; '>os_int_to_string</span>
+<span style='color:#696969; '>;; now eax contains '12312'</span>
+</pre>
+</pre>
+<h4><font color="red">os_string_to_int</font></h4>
+Converts an String to Integer.<br>
+IN: ESI - String<br>
+OUT: ECX - Integer<br>
+Example:
+<pre style='color:#000000;background:#ffffff;'><html><body style='color:#000000; background:#ffffff; '><pre>
+<span style='color:#800000; font-weight:bold; '>mov</span> <span style='color:#000080; '>esi</span><span style='color:#808030; '>,</span> string
+<span style='color:#800000; font-weight:bold; '>call</span> <span style='color:#e34adc; '>os_int_to_string</span>
+<span style='color:#696969; '>;; ecx now contain 1234</span>
+...
+string <span style='color:#004a43; '>db</span> <span style='color:#0000e6; '>'1234'</span><span style='color:#808030; '>,</span> NULL
+</pre>
+</pre>
+<h4><font color="red">os_string_compare</font></h4>
+Compares two strings.<br>
+IN: ESI - String one, EDI - String two, ECX - Length to compare<br>
+OUT: CF set if equal, clear if not.<br>
+Example:
+<pre style='color:#000000;background:#ffffff;'><html><body style='color:#000000; background:#ffffff; '><pre>
+<span style='color:#800000; font-weight:bold; '>mov</span> <span style='color:#000080; '>edi</span><span style='color:#808030; '>,</span> string_I
+<span style='color:#800000; font-weight:bold; '>mov</span> <span style='color:#000080; '>esi</span><span style='color:#808030; '>,</span> string_II
+<span style='color:#696969; '>;; compare 10 bytes</span>
+<span style='color:#800000; font-weight:bold; '>mov</span> <span style='color:#000080; '>ecx</span><span style='color:#808030; '>,</span> <span style='color:#008c00; '>10</span>
+<span style='color:#800000; font-weight:bold; '>call</span> <span style='color:#e34adc; '>os_string_compare</span>
+...
+string_I <span style='color:#004a43; '>db</span> <span style='color:#0000e6; '>'String One'</span><span style='color:#808030; '>,</span> NULL
+string_II <span style='color:#004a43; '>db</span> <span style='color:#0000e6; '>'String Two'</span><span style='color:#808030; '>,</span> NULL
+</pre>
+</pre>
+<h4><font color="red">os_string_length</font></h4>
+Returns the length of a string.<br>
+IN: ESI - String (NULL Terminated!)<br>
+OUT: EAX - Length.<br>
+Example:
+<pre style='color:#000000;background:#ffffff;'><html><body style='color:#000000; background:#ffffff; '><pre>
+<span style='color:#800000; font-weight:bold; '>mov</span> <span style='color:#000080; '>esi</span><span style='color:#808030; '>,</span> string
+<span style='color:#800000; font-weight:bold; '>call</span> <span style='color:#e34adc; '>os_string_length</span>
+<span style='color:#696969; '>;; EAX now contains the number '6'</span>
+...
+string <span style='color:#004a43; '>db</span> <span style='color:#0000e6; '>'String'</span><span style='color:#808030; '>,</span> NULL
+</pre>
+</pre>
+<h4><font color="red">os_string_capitalize</font></h4>
+Captialize a string.<br>
+IN: EAX - Pointer to String (NULL Terminated!)<br>
+OUT: Nothing, buffer capitalized<br>
+Example:
+<pre style='color:#000000;background:#ffffff;'><html><body style='color:#000000; background:#ffffff; '><pre>
+<span style='color:#800000; font-weight:bold; '>mov</span> <span style='color:#000080; '>eax</span><span style='color:#808030; '>,</span> string
+<span style='color:#800000; font-weight:bold; '>call</span> <span style='color:#e34adc; '>os_string_capitalize</span>
+<span style='color:#696969; '>;; string now contains 'STRING'</span>
+...
+string <span style='color:#004a43; '>db</span> <span style='color:#0000e6; '>'string'</span><span style='color:#808030; '>,</span> NULL
+</pre>
+</pre>
+<h4><font color="red">os_string_decapitalize</font></h4>
+Captialize a string.<br>
+IN: EAX - Pointer to String (NULL Terminated!)<br>
+OUT: Nothing, buffer decapitalized<br>
+Example:
+<pre style='color:#000000;background:#ffffff;'><html><body style='color:#000000; background:#ffffff; '><pre>
+<span style='color:#800000; font-weight:bold; '>mov</span> <span style='color:#000080; '>eax</span><span style='color:#808030; '>,</span> string
+<span style='color:#800000; font-weight:bold; '>call</span> <span style='color:#e34adc; '>os_string_decapitalize</span>
+<span style='color:#696969; '>;; string now contains 'string'</span>
+...
+string <span style='color:#004a43; '>db</span> <span style='color:#0000e6; '>'STRING'</span><span style='color:#808030; '>,</span> NULL
+</pre>
+</pre>
+<h4><font color="red">os_string_separate</font></h4>
+Separate the string into two.<br>
+IN: BL - Separator character, ESI - Pointer to string<br>
+OUT: EDI - Pointer to next char after separator, EDI - 1 = NULL<br>
+Example:
+<pre style='color:#000000;background:#ffffff;'><html><body style='color:#000000; background:#ffffff; '><pre>
+<span style='color:#800000; font-weight:bold; '>mov</span> <span style='color:#000080; '>esi</span><span style='color:#808030; '>,</span> string
+<span style='color:#800000; font-weight:bold; '>mov</span> <span style='color:#000080; '>bl</span><span style='color:#808030; '>,</span> <span style='color:#0000e6; '>'@'</span>
+<span style='color:#800000; font-weight:bold; '>call</span> <span style='color:#e34adc; '>os_string_separate</span>
+<span style='color:#696969; '>;; string is now 'dude'</span>
+<span style='color:#696969; '>;; and edi is 'lol.com'</span>
+...
+string <span style='color:#004a43; '>db</span> <span style='color:#0000e6; '>'dude@lol.com'</span><span style='color:#808030; '>,</span> NULL
+</pre>
+</pre>
+<h4><font color="red">os_clear_string</font></h4>
+Clears a string i.e  Nulls it out<br>
+In: EDI - Pointer to string, ECX - Length <br>
+OUT: String Cleared <br>
+Example:
+<pre style='color:#000000;background:#ffffff;'><html><body style='color:#000000; background:#ffffff; '><pre>
+<span style='color:#800000; font-weight:bold; '>mov</span> <span style='color:#000080; '>edi</span><span style='color:#808030; '>,</span> string
+<span style='color:#800000; font-weight:bold; '>mov</span> <span style='color:#000080; '>ecx</span><span style='color:#808030; '>,</span> <span style='color:#008c00; '>6</span>
+<span style='color:#800000; font-weight:bold; '>call</span> <span style='color:#e34adc; '>os_clear_string</span>
+
+<span style='color:#696969; '>;; string is now empty :(</span>
+...
+string <span style='color:#004a43; '>db</span> <span style='color:#0000e6; '>'string'</span><span style='color:#808030; '>,</span> NULL
+</pre>
+</pre>
+<h3>System Related</h3>
+<h4><font color="red">os_exit</font></h4>
+Exits to the operating system with ERR_CODE set to 0<br>
+Example:
+<pre style='color:#000000;background:#ffffff;'><html><body style='color:#000000; background:#ffffff; '><pre>
+<span style='color:#800000; font-weight:bold; '>call</span> <span style='color:#e34adc; '>os_exit</span>
+<span style='color:#696969; '>;; now back to Zicronix Shell :)</span>
+</pre>
+</pre>
+<h4><font color="red">os_abort</font></h4>
+Aborts to the OS (Same as os_exit)<br>
+IN: EBX - ERR_CODE<br>
+<pre style='color:#000000;background:#ffffff;'><html><body style='color:#000000; background:#ffffff; '><pre>
+<span style='color:#800000; font-weight:bold; '>mov</span> <span style='color:#000080; '>ebx</span><span style='color:#808030; '>,</span> ERR_CODE
+<span style='color:#800000; font-weight:bold; '>call</span> <span style='color:#e34adc; '>os_abort</span>
+...
+ERR_CODE <span style='color:#004a43; '>db</span> <span style='color:#0000e6; '>'An error occurred while this application was running'</span><span style='color:#808030; '>,</span> NULL
+</pre>
+</pre>
+<h4><font color="red">os_get_args</font></h4>
+Get the arguments from the shell.<br>
+IN: Nothing <br>
+OUT: ESI - Arguments<br>
+Example:
+<pre style='color:#000000;background:#ffffff;'><html><body style='color:#000000; background:#ffffff; '><pre>
+<span style='color:#800000; font-weight:bold; '>call</span> <span style='color:#e34adc; '>os_get_args</span>
+<span style='color:#696969; '>;; ESI now contains the arguments :)</span>
+</pre>
+</pre>
+<h3>PCI System Calls</h3>
+This section will describe the PCI realted system calls. Note that PCI is something under development, so these calls may be buggy!
+<h4><font color="red">os_pci_read_register</font></h4>
+Read a register from the PCI Bus. <br>
+IN: CL - Type of read (8/16/32 bit), EAX - Device to read<br>
+OUT: DL/DX/EDX (Depends upon the type to read)<br>
+<pre style='color:#000000;background:#ffffff;'><html><body style='color:#000000; background:#ffffff; '><pre>
+<span style='color:#696969; '>;; Read from RTL8139</span>
+<span style='color:#800000; font-weight:bold; '>mov</span> <span style='color:#000080; '>eax</span><span style='color:#808030; '>,</span> <span style='color:#008000; '>0x813910EC</span>
+<span style='color:#696969; '>;; 32-bit read</span>
+<span style='color:#800000; font-weight:bold; '>mov</span> <span style='color:#000080; '>cl</span><span style='color:#808030; '>,</span> <span style='color:#008c00; '>32</span>
+<span style='color:#800000; font-weight:bold; '>call</span> <span style='color:#e34adc; '>os_pci_read_register</span>
+<span style='color:#696969; '>;; edx = register read</span>
+</pre>
+</pre>
+<h4><font color="red">os_pci_write_register</font></h4>
+Write a register to the PCI Bus. <br>
+IN: CL - Type of write (8/16/32 bit), EAX - Device to write, DL/DX/EDX (Depends upon the type to write) <br>
+OUT: Register written, CF if error <br>
+<h4><font color="red">os_pci_find_device</font></h4>
+Find a device from the PCI Bus. <br>
+IN: EAX - Device+Vendor ID<br>
+OUT: CF if not found. <br>
+<h3>Sound</h3>
+This section will describe calls related to the PC speaker.
+<h4><font color="red">os_speaker_on</font></h4>
+Turns on the speaker<br>
+IN: AX = Frequency, ECX - Times (Seconds*10 units)<br>
+OUT: Nothing<br>
+Example:
+<pre style='color:#000000;background:#ffffff;'><html><body style='color:#000000; background:#ffffff; '><pre>
+<span style='color:#696969; '>;; do a standard beep</span>
+<span style='color:#800000; font-weight:bold; '>mov</span> <span style='color:#000080; '>ax</span><span style='color:#808030; '>,</span> <span style='color:#008000; '>0x0C80</span>
+<span style='color:#696969; '>;; for 0.5 seconds</span>
+<span style='color:#800000; font-weight:bold; '>mov</span> <span style='color:#000080; '>ecx</span><span style='color:#808030; '>,</span> <span style='color:#008c00; '>05</span>
+<span style='color:#800000; font-weight:bold; '>call</span> <span style='color:#e34adc; '>os_speaker_on</span>
+</pre>
+</pre>
+<h4><font color="red">os_speaker_off</font></h4>
+Turns off the speaker<br>
+<h3>Date and Time</h3>
+This section will describe calls related to Date/Time.
+<h4><font color="red">os_get_time</font></h4>
+Gets the time in HH:MM:SS<br>
+IN: EDI - Buffer to store time<br>
+OUT: Buffer filled with time string<br>
+<h4><font color="red">os_get_date</font></h4>
+Gets the date in DD/MM/YYYY<br>
+IN: EDI - Buffer to store date<br>
+OUT: Buffer filled with date string<br>
+<h3>Interval Timers</h3>
+<h4><font color="red">os_pause</font></h4>
+Pause for a give amount of time<br>
+IN: ECX - Seconds * 10 units to pause<br>
+<h4><font color="red">os_start_timer</font></h4>
+Start the timer<br>
+IN: Nothing<br>
+OUT: Nothing<br>
+<h4><font color="red">os_stop_timer</font></h4>
+Stop the timer<br>
+IN: Nothing<br>
+OUT: Nothing<br>
+<h4><font color="red">os_get_timer</font></h4>
+Get the ticks value from the timer<br>
+IN: Nothing<br>
+OUT: ECX - Seconds * 10 Units<br>
+</font>
+
+ 
